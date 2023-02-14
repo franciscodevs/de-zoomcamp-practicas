@@ -1,0 +1,6 @@
+2_docker_sql/ny_taxi_postgres_data
+terraform.tfstate
+.terraform.lock.hcl
+docker-terraform-local.code-workspace
+pipeline.py
+.terraform
