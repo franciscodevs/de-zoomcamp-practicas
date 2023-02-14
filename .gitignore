@@ -4,3 +4,4 @@ terraform.tfstate
 docker-terraform-local.code-workspace
 pipeline.py
 .terraform
+.ipynb_checkpoints
