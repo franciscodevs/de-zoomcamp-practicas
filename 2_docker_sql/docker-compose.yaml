@@ -11,9 +11,13 @@ services:
     ports:
       - "5432:5432"
   pgadmin:
+    volumes:
+      - "pgadmin_conn_data:/var/lib/pgadmin:rw"
     image: dpage/pgadmin4
     environment:
       - PGADMIN_DEFAULT_EMAIL=admin@admin.com
       - PGADMIN_DEFAULT_PASSWORD=root
     ports:
       - "8080:80"
+volumes:
+  pgadmin_conn_data:
