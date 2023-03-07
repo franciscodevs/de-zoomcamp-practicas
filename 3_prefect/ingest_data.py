@@ -7,8 +7,10 @@ import pandas as pd
 import argparse
 import os
 from prefect import flow, task
-from prefect.task import task_input_hash
+from prefect.tasks import task_input_hash
 from datetime import timedelta
+from prefect_sqlalchemy import SqlAlchemyConnector
+
 
 @task(log_prints=True, retries=1, cache_key_fn=task_input_hash, cache_expiration=timedelta(days=1))
 def extract_data(url):
@@ -26,62 +28,59 @@ def transform_data(df):
     return df
 
 @task(log_prints=True, retries=1)
-def ingest_data(user,password,host,port,db,table_name,df):
-
+def ingest_data(table_name,df):
+    # Conexion con el bloque en prefect
+    connection_block = SqlAlchemyConnector.load("postgres-connector")
     ## Ingestando la data en chunks
-    # Creando la tabla
-    engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
-    df.head(n=0).to_sql(name=table_name, con=engine, if_exists='replace')
-    print("Created ny_taxi_data table")
+    #Conexion a Postgres
+    with connection_block.get_connection(begin=False) as engine:
+        # Creando la tabla
+        df.head(n=0).to_sql(name=table_name, con=engine, if_exists='replace')
+        print("Created ny_taxi_data table")
 
-    # Insertando los datos
-    chunksize = 50_00
-    max_size = len(df.index)
-    last_run = False
-    start = 0
-    current = chunksize
-    overage = 0
+        # Insertando los datos
+        chunksize = 50_00
+        max_size = len(df.index)
+        last_run = False
+        start = 0
+        current = chunksize
+        overage = 0
 
-    # Barra de progreso
-    t_start = time()
-    with tqdm(total=max_size, unit='steps', unit_scale=True) as pbar:
-        while last_run == False:
-            if current > max_size:
-                overage = current - max_size
-                current = max_size
-                chunksize -= overage
-                last_run = True
+        # Barra de progreso
+        t_start = time()
+        with tqdm(total=max_size, unit='steps', unit_scale=True) as pbar:
+            while last_run == False:
+                if current > max_size:
+                    overage = current - max_size
+                    current = max_size
+                    chunksize -= overage
+                    last_run = True
 
-            # Insertando data por chunks (5000 en 5000)
-            df.iloc[start:current].to_sql(name=table_name, con=engine, if_exists='append', method='multi')
+                # Insertando data por chunks (5000 en 5000)
+                df.iloc[start:current].to_sql(name=table_name, con=engine, if_exists='append', method='multi')
 
-            start = current
-            current += chunksize
-            pbar.update(chunksize)
-        pbar.update(overage)
-    t_end = time()
+                start = current
+                current += chunksize
+                pbar.update(chunksize)
+            pbar.update(overage)
+        t_end = time()
 
-    print(f"Ingesta de data finalizada en la base de datos, {t_end - t_start:.3f} segundos")
+        print(f"Ingesta de data finalizada en la base de datos, {t_end - t_start:.3f} segundos")
 
 @flow(name="Subflow", log_prints=True)
-def flog_subflow
+def log_subflow(table_name:str):
+    print(f"Logging subflow for: {table_name}")
 
 @flow(name="Ingest flow")
-def main_flow():
-    user = "root"
-    password = "root"
-    host = "localhost"
-    port = "5432"
-    db = "ny_taxi"
-    table_name = "ny_taxi_data"
+def main_flow(table_name :str):
     url = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2021-01.parquet"
-
+    log_subflow(table_name)
     raw_data = extract_data(url)
     data=transform_data(raw_data)
-    ingest_data(user,password,host,port,db,table_name,data)
+    ingest_data(table_name,data)
 
 if __name__ == '__main__':
-    main_flow()
+    main_flow("ny_taxi_data")
 
 
 
